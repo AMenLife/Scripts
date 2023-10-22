@@ -3,7 +3,7 @@
 // @icon         https://www.baidu.com/favicon.ico
 // @namespace    https://greasyfork.org/zh-CN/scripts/418349-移动端-百度系优化
 // @supportURL   https://greasyfork.org/zh-CN/scripts/418349-移动端-百度系优化/feedback
-// @version      2023.10.6
+// @version      2023.10.20
 // @author       WhiteSevs
 // @description  贴吧直接看
 // @match        *://tieba.baidu.com/*
@@ -21,7 +21,7 @@
 // @grant        GM_info
 // @grant        unsafeWindow
 // @require      https://greasyfork.org/scripts/449471-viewer/code/Viewer.js?version=1249086
-// @require      https://greasyfork.org/scripts/455186-whitesevsutils/code/WhiteSevsUtils.js?version=1260472
+// @require      https://greasyfork.org/scripts/455186-whitesevsutils/code/WhiteSevsUtils.js?version=1262507
 // @require      https://greasyfork.org/scripts/465772-domutils/code/DOMUtils.js?version=1258535
 // @run-at       document-start
 // ==/UserScript==
@@ -2072,6 +2072,14 @@
               }
             }
           }
+
+          if (utils.isNull(url)) {
+            /* 最新资讯上的隐藏的链接 */
+            let labelUrl = targetNode.getAttribute("label-url");
+            if (labelUrl) {
+              url = labelUrl;
+            }
+          }
           /* 因为链接中存在%25，需要正确替换成% */
           if (!utils.isNull(url) && url.startsWith("https://m.baidu.com/sf?")) {
             url = decodeURIComponent(url);
@@ -2375,6 +2383,23 @@
             handleItemURL.setArticleOriginUrl(item, resultItemOriginURL);
             articleElement.setAttribute("rl-link-href", resultItemOriginURL);
           }
+        },
+        /**
+         * 替换链接-vsearch
+         */
+        replaceVSearchLink() {
+          document
+            .querySelectorAll("#realtime-container  div:not([class])")
+            .forEach((element) => {
+              let linkElement = element.querySelector("a");
+              if (linkElement.hasAttribute("data-sf-visited")) {
+                let dataSfVisited = linkElement.getAttribute("data-sf-visited");
+                if (dataSfVisited !== linkElement.href) {
+                  linkElement.href = dataSfVisited;
+                  log.success("替换链接  " + dataSfVisited);
+                }
+              }
+            });
         },
       };
 
@@ -3004,6 +3029,23 @@
         searchUpdateRealLink.run();
         if (GM_Menu.get("baidu_search_automatically_expand_next_page")) {
           handleNextPage.init();
+        }
+        if (window.location.href.startsWith("https://m.baidu.com/sf/vsearch")) {
+          utils
+            .waitNode("#realtime-container .c-infinite-scroll")
+            .then((element) => {
+              let replaceVSearchLinkLonkFunction = new utils.LockFunction(
+                handleItemURL.replaceVSearchLink,
+                600
+              );
+              utils.mutationObserver(element, {
+                config: {
+                  subtree: true,
+                  childList: true,
+                },
+                callback: replaceVSearchLinkLonkFunction.run,
+              });
+            });
         }
       });
     },
@@ -5730,8 +5772,24 @@
             tiebaBusiness.vueRootView.$toast(respData["error"]);
           }
         },
+        /**
+         * 客户端已调用调用伪装
+         */
+        clientCallMasquerade() {
+          let originGetItem = window.localStorage.getItem;
+          window.localStorage.getItem = function(key){
+            if(key === "p_w_app_call" || key=== "p_w_launchappcall"){
+              return JSON.stringify({
+                "value":1,
+                "date":utils.formatTime(undefined,"yyyyMMdd"),
+              })
+            }else{
+              return originGetItem.call(window.localStorage,key);
+            }
+          }
+        },
       };
-
+      tiebaBusiness.clientCallMasquerade();
       GM_addStyle(this.css.tieba);
       log.info("插入CSS规则");
       if (
